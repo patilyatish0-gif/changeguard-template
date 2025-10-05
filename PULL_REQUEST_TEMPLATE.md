@@ -1,0 +1,3 @@
+- [ ] No secrets committed (use GitHub Actions → Secrets)
+- [ ] Updated `changeguard.yaml` if used surfaces changed
+- [ ] CI is green
