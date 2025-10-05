@@ -1,0 +1,61 @@
+name: ChangeGuard
+on:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"  # nightly at 03:00 UTC
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure jq (for JSON checks)
+        run: sudo apt-get update -y && sudo apt-get install -y jq
+
+      # --- Demo “golden tests” (OpenAI + Stripe) ---
+      - name: OpenAI smoke test (list models)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -e
+          test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY missing"; exit 1; }
+          CODE=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            https://api.openai.com/v1/models)
+          test "$CODE" = "200" || (echo "OpenAI status $CODE"; cat /tmp/resp.json; exit 1)
+          jq -e '.data' /tmp/resp.json >/dev/null
+
+      - name: Stripe 404 sanity
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+        run: |
+          set -e
+          test -n "$STRIPE_API_KEY" || { echo "STRIPE_API_KEY missing"; exit 1; }
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $STRIPE_API_KEY" \
+            https://api.stripe.com/v1/customers/non_existent)
+          test "$CODE" = "404" || (echo "Expected 404, got $CODE"; exit 1)
+
+      # Optional Slack notifications
+      - name: Notify Slack (success)
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"✅ ChangeGuard checks passed on $GITHUB_REPOSITORY (${GITHUB_REF_NAME})\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
+
+      - name: Notify Slack (failure)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"❌ ChangeGuard checks failed on $GITHUB_REPOSITORY (${GITHUB_REF_NAME}). See Actions logs.\"}" \
+              "$SLACK_WEBHOOK_URL"
+          fi
