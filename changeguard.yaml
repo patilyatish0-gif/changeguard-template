@@ -1,0 +1,21 @@
+policy:
+  minSeverity: breaking
+  blockOn: ["goldenFailures", "breakingOnUsed"]
+  usedSurfaces:
+    endpoints: ["/v1/customers"]
+    fields: ["Customer.email"]
+
+monitors:
+  - name: "OpenAI"
+    tests:
+      - name: "List models returns data"
+        method: GET
+        url: https://api.openai.com/v1/models
+        auth: env:OPENAI_API_KEY
+
+  - name: "Stripe"
+    tests:
+      - name: "404 sanity on non-existent customer"
+        method: GET
+        url: https://api.stripe.com/v1/customers/non_existent
+        auth: env:STRIPE_API_KEY
